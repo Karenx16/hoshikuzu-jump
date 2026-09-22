@@ -1,0 +1,1545 @@
+<!DOCTYPE html>
+
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#171a2b">
+<meta name="description" content="星を集めてコンボをつなげ！星屑ジャンプ">
+
+<title>星屑ジャンプ</title>
+
+<style>
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    -webkit-tap-highlight-color: transparent;
+}
+
+html, body {
+    width: 100%;
+    height: 100%;
+}
+
+body {
+    background:
+        radial-gradient(circle at 20% 20%, rgba(100,120,255,.12), transparent 30%),
+        radial-gradient(circle at 80% 80%, rgba(255,215,0,.08), transparent 30%),
+        linear-gradient(135deg, #11131f, #29355f);
+    color: #fff;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    user-select: none;
+    touch-action: manipulation;
+}
+
+/* ---------- Header ---------- */
+
+h1 {
+    font-size: clamp(1.15rem, 5vw, 1.5rem);
+    margin-bottom: 8px;
+    letter-spacing: 2px;
+    color: #ffd700;
+    text-shadow: 0 0 12px rgba(255,215,0,.55);
+}
+
+/* ---------- Game ---------- */
+
+#game-container {
+    position: relative;
+    width: min(400px, 94vw);
+    aspect-ratio: 4 / 3;
+    background: rgba(0,0,0,.35);
+    border: 2px solid rgba(255,255,255,.18);
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow:
+        0 15px 40px rgba(0,0,0,.5),
+        inset 0 0 30px rgba(255,255,255,.03);
+}
+
+canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+/* ---------- Info ---------- */
+
+.info {
+    margin-top: 10px;
+    width: min(400px, 94vw);
+    text-align: center;
+    font-size: .82rem;
+    line-height: 1.55;
+    color: #aeb7ce;
+}
+
+.info span {
+    color: #fff;
+    font-weight: 700;
+}
+
+.combo-badge {
+    color: #f6e05e !important;
+    text-shadow: 0 0 8px rgba(246,224,94,.5);
+}
+
+/* ---------- Buttons ---------- */
+
+#controls {
+    width: min(400px, 94vw);
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+button {
+    border: 1px solid rgba(255,255,255,.18);
+    background: rgba(255,255,255,.08);
+    color: #fff;
+    border-radius: 8px;
+    padding: 7px 13px;
+    font-size: .75rem;
+    cursor: pointer;
+}
+
+button:active {
+    transform: scale(.95);
+    background: rgba(255,255,255,.16);
+}
+
+.hidden {
+    display: none !important;
+}
+
+/* ---------- Achievement ---------- */
+
+#achievement {
+    position: fixed;
+    top: 18px;
+    left: 50%;
+    transform: translateX(-50%) translateY(-120px);
+    background: rgba(20,23,40,.94);
+    border: 1px solid rgba(255,215,0,.45);
+    border-radius: 12px;
+    padding: 10px 18px;
+    text-align: center;
+    box-shadow: 0 8px 25px rgba(0,0,0,.4);
+    transition: transform .35s ease;
+    z-index: 10;
+    pointer-events: none;
+}
+
+#achievement.show {
+    transform: translateX(-50%) translateY(0);
+}
+
+#achievement small {
+    display: block;
+    color: #f6e05e;
+    margin-bottom: 2px;
+}
+
+#achievement strong {
+    font-size: .9rem;
+}
+
+/* ---------- Mobile ---------- */
+
+@media (max-height: 600px) {
+    h1 {
+        margin-bottom: 4px;
+    }
+
+    .info {
+        margin-top: 5px;
+        font-size: .72rem;
+    }
+
+    #controls {
+        margin-top: 4px;
+    }
+}
+</style>
+
+</head>
+
+<body>
+
+<h1>✨ 星屑ジャンプ</h1>
+
+<div id="game-container">
+    <canvas id="gameCanvas" width="400" height="300"></canvas>
+</div>
+
+<div class="info">
+    タップ / クリック / <b>Space</b> でジャンプ<br>
+
+スコア:
+<span id="scoreDisplay">0</span>
+／ コンボ:
+<span id="comboDisplay" class="combo-badge">0x</span>
+／ ハイスコア:
+<span id="highScoreDisplay">0</span>
+<br>
+
+Lv:
+<span id="levelDisplay">1</span>
+／ 最高コンボ:
+<span id="bestComboDisplay">0x</span>
+／ 速度:
+<span id="speedDisplay">3.5</span>
+</div>
+
+<div id="controls">
+    <button id="pauseBtn">⏸ 一時停止</button>
+    <button id="resetBtn">↻ データリセット</button>
+</div>
+
+<div id="achievement">
+    <small>🏆 ACHIEVEMENT</small>
+    <strong id="achievementText"></strong>
+</div>
+
+<script>
+"use strict";
+
+/* =========================================================
+   基本設定
+========================================================= */
+
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+
+const scoreDisplay = document.getElementById("scoreDisplay");
+const comboDisplay = document.getElementById("comboDisplay");
+const highScoreDisplay = document.getElementById("highScoreDisplay");
+const bestComboDisplay = document.getElementById("bestComboDisplay");
+const levelDisplay = document.getElementById("levelDisplay");
+const speedDisplay = document.getElementById("speedDisplay");
+
+const pauseBtn = document.getElementById("pauseBtn");
+const resetBtn = document.getElementById("resetBtn");
+
+const achievementBox = document.getElementById("achievement");
+const achievementText = document.getElementById("achievementText");
+
+/* =========================================================
+   保存データ
+========================================================= */
+
+const SAVE_KEY = "hoshikuzu_jump_save_v1";
+
+let savedData = {
+    highScore: 0,
+    bestCombo: 0,
+    totalStars: 0,
+    games: 0,
+    achievements: []
+};
+
+try {
+    const raw = localStorage.getItem(SAVE_KEY);
+
+    if (raw) {
+        const parsed = JSON.parse(raw);
+
+        savedData = {
+            ...savedData,
+            ...parsed
+        };
+    }
+} catch (e) {
+    console.warn("保存データを読み込めませんでした。");
+}
+
+/* =========================================================
+   ゲーム状態
+========================================================= */
+
+let score = 0;
+let highScore = savedData.highScore;
+
+let combo = 0;
+let bestCombo = savedData.bestCombo;
+let comboTimer = 0;
+
+let level = 1;
+let gameSpeed = 3.5;
+
+let frameCount = 0;
+
+let gameState = "START";
+// START / PLAYING / PAUSED / GAMEOVER
+
+let lastTime = 0;
+let deltaFrames = 1;
+
+let soundEnabled = true;
+let audioContext = null;
+
+/* =========================================================
+   プレイヤー
+========================================================= */
+
+const player = {
+    x: 60,
+    y: 220,
+    radius: 12,
+
+    vy: 0,
+
+    gravity: 0.58,
+    jumpPower: -9.8,
+
+    groundY: 220,
+
+    isJumping: false
+};
+
+/* =========================================================
+   オブジェクト
+========================================================= */
+
+let obstacles = [];
+let stars = [];
+let particles = [];
+let floatingTexts = [];
+
+/* =========================================================
+   入力
+========================================================= */
+
+let lastInputTime = 0;
+
+function handleInput(e) {
+
+    if (e) {
+        if (e.type === "keydown") {
+
+            if (e.code !== "Space") {
+                return;
+            }
+
+            e.preventDefault();
+        }
+    }
+
+    const now = performance.now();
+
+    // 短時間の二重入力防止
+    if (now - lastInputTime < 80) {
+        return;
+    }
+
+    lastInputTime = now;
+
+    jump();
+}
+
+window.addEventListener("keydown", handleInput);
+
+canvas.addEventListener("pointerdown", function(e) {
+    e.preventDefault();
+    handleInput();
+});
+
+/* =========================================================
+   オーディオ
+========================================================= */
+
+function initAudio() {
+
+    if (!soundEnabled) return;
+
+    try {
+
+        if (!audioContext) {
+            audioContext =
+                new (window.AudioContext || window.webkitAudioContext)();
+        }
+
+        if (audioContext.state === "suspended") {
+            audioContext.resume();
+        }
+
+    } catch (e) {
+        soundEnabled = false;
+    }
+}
+
+function playSound(type) {
+
+    if (!soundEnabled) return;
+
+    initAudio();
+
+    if (!audioContext) return;
+
+    const oscillator = audioContext.createOscillator();
+    const gain = audioContext.createGain();
+
+    oscillator.connect(gain);
+    gain.connect(audioContext.destination);
+
+    let frequency = 440;
+    let duration = 0.08;
+
+    if (type === "jump") {
+        frequency = 520;
+        duration = 0.07;
+    }
+
+    if (type === "star") {
+        frequency = 760;
+        duration = 0.09;
+    }
+
+    if (type === "combo") {
+        frequency = 980;
+        duration = 0.12;
+    }
+
+    if (type === "gameover") {
+        frequency = 150;
+        duration = 0.22;
+    }
+
+    oscillator.frequency.value = frequency;
+    oscillator.type = "sine";
+
+    gain.gain.setValueAtTime(.08, audioContext.currentTime);
+    gain.gain.exponentialRampToValueAtTime(
+        .001,
+        audioContext.currentTime + duration
+    );
+
+    oscillator.start();
+    oscillator.stop(audioContext.currentTime + duration);
+}
+
+/* =========================================================
+   保存
+========================================================= */
+
+function saveData() {
+
+    savedData.highScore = highScore;
+    savedData.bestCombo = bestCombo;
+
+    try {
+        localStorage.setItem(
+            SAVE_KEY,
+            JSON.stringify(savedData)
+        );
+    } catch (e) {
+        console.warn("データを保存できませんでした。");
+    }
+}
+
+/* =========================================================
+   ゲームリセット
+========================================================= */
+
+function resetGame() {
+
+    score = 0;
+    combo = 0;
+    comboTimer = 0;
+
+    level = 1;
+    gameSpeed = 3.5;
+
+    frameCount = 0;
+
+    obstacles = [];
+    stars = [];
+    particles = [];
+    floatingTexts = [];
+
+    player.y = player.groundY;
+    player.vy = 0;
+    player.isJumping = false;
+
+    updateUI();
+}
+
+/* =========================================================
+   ジャンプ
+========================================================= */
+
+function jump() {
+
+    initAudio();
+
+    if (
+        gameState === "START" ||
+        gameState === "GAMEOVER"
+    ) {
+
+        resetGame();
+
+        gameState = "PLAYING";
+
+        savedData.games++;
+
+        saveData();
+
+        playSound("jump");
+
+        return;
+    }
+
+    if (gameState === "PAUSED") {
+        return;
+    }
+
+    if (
+        gameState === "PLAYING" &&
+        !player.isJumping
+    ) {
+
+        player.vy = player.jumpPower;
+        player.isJumping = true;
+
+        playSound("jump");
+    }
+}
+
+/* =========================================================
+   スコア
+========================================================= */
+
+function addScore(points) {
+
+    score += points;
+
+    if (score > highScore) {
+
+        highScore = score;
+
+        if (score >= 50) {
+            unlockAchievement("50点突破！");
+        }
+
+        if (score >= 100) {
+            unlockAchievement("100点突破！");
+        }
+
+        if (score >= 250) {
+            unlockAchievement("250点突破！");
+        }
+
+        saveData();
+    }
+
+    updateUI();
+}
+
+/* =========================================================
+   UI
+========================================================= */
+
+function updateUI() {
+
+    scoreDisplay.textContent = score;
+    comboDisplay.textContent = combo + "x";
+    highScoreDisplay.textContent = highScore;
+    bestComboDisplay.textContent = bestCombo + "x";
+    levelDisplay.textContent = level;
+    speedDisplay.textContent = gameSpeed.toFixed(1);
+}
+
+/* =========================================================
+   パーティクル
+========================================================= */
+
+function createParticles(x, y, amount = 10) {
+
+    for (let i = 0; i < amount; i++) {
+
+        const angle =
+            Math.random() * Math.PI * 2;
+
+        const speed =
+            1 + Math.random() * 3;
+
+        particles.push({
+
+            x,
+            y,
+
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed,
+
+            life: 20 + Math.random() * 20,
+
+            maxLife: 40,
+
+            radius: 1.5 + Math.random() * 2.5
+        });
+    }
+}
+
+/* =========================================================
+   フローティングテキスト
+========================================================= */
+
+function createFloatingText(x, y, text) {
+
+    floatingTexts.push({
+        x,
+        y,
+        text,
+        life: 45
+    });
+}
+
+/* =========================================================
+   実績
+========================================================= */
+
+function unlockAchievement(name) {
+
+    if (savedData.achievements.includes(name)) {
+        return;
+    }
+
+    savedData.achievements.push(name);
+
+    showAchievement(name);
+
+    saveData();
+}
+
+function showAchievement(name) {
+
+    achievementText.textContent = name;
+
+    achievementBox.classList.add("show");
+
+    setTimeout(() => {
+        achievementBox.classList.remove("show");
+    }, 2200);
+}
+
+/* =========================================================
+   ゲームオーバー
+========================================================= */
+
+function gameOver() {
+
+    if (gameState !== "PLAYING") {
+        return;
+    }
+
+    gameState = "GAMEOVER";
+
+    playSound("gameover");
+
+    createParticles(
+        player.x,
+        player.y,
+        20
+    );
+
+    if (combo > bestCombo) {
+
+        bestCombo = combo;
+
+        savedData.bestCombo = bestCombo;
+
+        saveData();
+    }
+
+    if (combo >= 5) {
+        unlockAchievement("5コンボ！");
+    }
+
+    if (combo >= 10) {
+        unlockAchievement("10コンボ！");
+    }
+
+    if (combo >= 20) {
+        unlockAchievement("20コンボ！");
+    }
+
+    updateUI();
+}
+
+/* =========================================================
+   Update
+========================================================= */
+
+function update() {
+
+    if (gameState !== "PLAYING") {
+        return;
+    }
+
+    frameCount++;
+
+    /* ---------- レベル ---------- */
+
+    level =
+        1 + Math.floor(score / 25);
+
+    gameSpeed =
+        Math.min(
+            9,
+            3.5 + (level - 1) * 0.45
+        );
+
+    /* ---------- コンボ ---------- */
+
+    if (comboTimer > 0) {
+
+        comboTimer -= deltaFrames;
+
+        if (comboTimer <= 0) {
+
+            combo = 0;
+
+            comboDisplay.textContent = "0x";
+        }
+    }
+
+    /* ---------- プレイヤー ---------- */
+
+    player.y += player.vy * deltaFrames;
+
+    player.vy +=
+        player.gravity * deltaFrames;
+
+    if (player.y >= player.groundY) {
+
+        player.y = player.groundY;
+
+        player.vy = 0;
+
+        player.isJumping = false;
+    }
+
+    /* ---------- 障害物 ---------- */
+
+    const spawnInterval =
+        Math.max(
+            46,
+            90 - (level - 1) * 6
+        );
+
+    if (frameCount % spawnInterval === 0) {
+
+        let type = "single";
+
+        const random = Math.random();
+
+        if (level >= 4 && random < .25) {
+
+            type = "tall";
+
+        } else if (
+            level >= 2 &&
+            random < .45
+        ) {
+
+            type = "wide";
+        }
+
+        let width = 16;
+        let height = 24;
+
+        if (type === "tall") {
+            height = 38;
+        }
+
+        if (type === "wide") {
+            width = 28;
+        }
+
+        obstacles.push({
+
+            x: canvas.width + 10,
+
+            y: 240 - height,
+
+            width,
+            height,
+
+            type
+        });
+    }
+
+    /* ---------- 星 ---------- */
+
+    const starInterval =
+        Math.max(
+            60,
+            110 - level * 4
+        );
+
+    if (frameCount % starInterval === 0) {
+
+        stars.push({
+
+            x: canvas.width + 10,
+
+            y:
+                90 +
+                Math.random() * 90,
+
+            radius: 10,
+
+            collected: false
+        });
+    }
+
+    /* ---------- 障害物更新 ---------- */
+
+    for (
+        let i = obstacles.length - 1;
+        i >= 0;
+        i--
+    ) {
+
+        const obs = obstacles[i];
+
+        obs.x -=
+            gameSpeed * deltaFrames;
+
+        /* 当たり判定 */
+
+        const hitX =
+            player.x + player.radius - 3 >
+            obs.x + 3 &&
+            player.x - player.radius + 3 <
+            obs.x + obs.width - 3;
+
+        const hitY =
+            player.y + player.radius - 2 >
+            obs.y + 3;
+
+        if (hitX && hitY) {
+
+            gameOver();
+
+            return;
+        }
+
+        /* 回避成功 */
+
+        if (
+            obs.x + obs.width < 0
+        ) {
+
+            obstacles.splice(i, 1);
+
+            const bonus =
+                2 *
+                Math.max(
+                    1,
+                    Math.floor(combo / 3) + 1
+                );
+
+            addScore(bonus);
+
+            createFloatingText(
+                player.x,
+                player.y - 25,
+                "+" + bonus
+            );
+        }
+    }
+
+    /* ---------- 星更新 ---------- */
+
+    for (
+        let i = stars.length - 1;
+        i >= 0;
+        i--
+    ) {
+
+        const star = stars[i];
+
+        star.x -=
+            gameSpeed * deltaFrames;
+
+        const distance =
+            Math.hypot(
+                player.x - star.x,
+                player.y - star.y
+            );
+
+        if (
+            !star.collected &&
+            distance <
+                player.radius +
+                star.radius +
+                6
+        ) {
+
+            star.collected = true;
+
+            combo++;
+
+            comboTimer = 180;
+
+            if (combo > bestCombo) {
+
+                bestCombo = combo;
+
+                if (
+                    bestCombo === 5 ||
+                    bestCombo === 10 ||
+                    bestCombo === 20
+                ) {
+                    saveData();
+                }
+            }
+
+            const multiplier =
+                1 +
+                Math.floor(combo / 3);
+
+            const points =
+                5 * multiplier;
+
+            addScore(points);
+
+            createParticles(
+                star.x,
+                star.y,
+                12
+            );
+
+            createFloatingText(
+                star.x,
+                star.y - 15,
+                "+" + points
+            );
+
+            playSound(
+                combo % 3 === 0
+                    ? "combo"
+                    : "star"
+            );
+
+            comboDisplay.textContent =
+                combo + "x";
+        }
+
+        if (
+            star.x + star.radius < 0
+        ) {
+
+            stars.splice(i, 1);
+        }
+    }
+
+    /* ---------- パーティクル ---------- */
+
+    for (
+        let i = particles.length - 1;
+        i >= 0;
+        i--
+    ) {
+
+        const p = particles[i];
+
+        p.x += p.vx * deltaFrames;
+        p.y += p.vy * deltaFrames;
+
+        p.vy += .04 * deltaFrames;
+
+        p.life -= deltaFrames;
+
+        if (p.life <= 0) {
+            particles.splice(i, 1);
+        }
+    }
+
+    /* ---------- フローティング ---------- */
+
+    for (
+        let i = floatingTexts.length - 1;
+        i >= 0;
+        i--
+    ) {
+
+        const f =
+            floatingTexts[i];
+
+        f.y -= .5 * deltaFrames;
+
+        f.life -= deltaFrames;
+
+        if (f.life <= 0) {
+            floatingTexts.splice(i, 1);
+        }
+    }
+
+    updateUI();
+}
+
+/* =========================================================
+   Draw
+========================================================= */
+
+function draw() {
+
+    ctx.clearRect(
+        0,
+        0,
+        canvas.width,
+        canvas.height
+    );
+
+    /* ---------- 星空 ---------- */
+
+    for (let i = 0; i < 35; i++) {
+
+        const x =
+            (i * 83 +
+            frameCount *
+            (0.05 + (i % 3) * .02))
+            % canvas.width;
+
+        const y =
+            20 +
+            (i * 47) % 190;
+
+        const size =
+            i % 4 === 0 ? 2 : 1;
+
+        ctx.fillStyle =
+            "rgba(255,255,255," +
+            (0.2 + (i % 5) * .1) +
+            ")";
+
+        ctx.fillRect(
+            x,
+            y,
+            size,
+            size
+        );
+    }
+
+    /* ---------- 地面 ---------- */
+
+    ctx.strokeStyle = "#4a5568";
+    ctx.lineWidth = 2;
+
+    ctx.beginPath();
+
+    ctx.moveTo(
+        0,
+        240
+    );
+
+    ctx.lineTo(
+        canvas.width,
+        240
+    );
+
+    ctx.stroke();
+
+    /* ---------- 障害物 ---------- */
+
+    obstacles.forEach(obs => {
+
+        ctx.fillStyle =
+            obs.type === "tall"
+                ? "#feb2b2"
+                : "#fc8181";
+
+        ctx.beginPath();
+
+        if (obs.type === "wide") {
+
+            ctx.moveTo(
+                obs.x,
+                obs.y + obs.height
+            );
+
+            ctx.lineTo(
+                obs.x +
+                obs.width * .3,
+                obs.y +
+                obs.height * .5
+            );
+
+            ctx.lineTo(
+                obs.x +
+                obs.width * .5,
+                obs.y
+            );
+
+            ctx.lineTo(
+                obs.x +
+                obs.width * .7,
+                obs.y +
+                obs.height * .5
+            );
+
+            ctx.lineTo(
+                obs.x +
+                obs.width,
+                obs.y +
+                obs.height
+            );
+
+        } else {
+
+            ctx.moveTo(
+                obs.x,
+                obs.y +
+                obs.height
+            );
+
+            ctx.lineTo(
+                obs.x +
+                obs.width / 2,
+                obs.y
+            );
+
+            ctx.lineTo(
+                obs.x +
+                obs.width,
+                obs.y +
+                obs.height
+            );
+        }
+
+        ctx.closePath();
+
+        ctx.fill();
+    });
+
+    /* ---------- 星 ---------- */
+
+    stars.forEach(star => {
+
+        if (star.collected) {
+            return;
+        }
+
+        drawStar(
+            star.x,
+            star.y,
+            5,
+            star.radius,
+            star.radius / 2
+        );
+    });
+
+    /* ---------- パーティクル ---------- */
+
+    particles.forEach(p => {
+
+        ctx.globalAlpha =
+            Math.max(
+                0,
+                p.life / p.maxLife
+            );
+
+        ctx.fillStyle = "#f6e05e";
+
+        ctx.beginPath();
+
+        ctx.arc(
+            p.x,
+            p.y,
+            p.radius,
+            0,
+            Math.PI * 2
+        );
+
+        ctx.fill();
+    });
+
+    ctx.globalAlpha = 1;
+
+    /* ---------- コンボオーラ ---------- */
+
+    if (combo >= 3) {
+
+        const pulse =
+            Math.sin(
+                frameCount * .12
+            ) * 2;
+
+        ctx.strokeStyle =
+            "rgba(246,224,94,.55)";
+
+        ctx.lineWidth = 3;
+
+        ctx.beginPath();
+
+        ctx.arc(
+            player.x,
+            player.y,
+            player.radius +
+            5 +
+            pulse,
+            0,
+            Math.PI * 2
+        );
+
+        ctx.stroke();
+    }
+
+    /* ---------- プレイヤー ---------- */
+
+    ctx.fillStyle = "#63b3ed";
+
+    ctx.beginPath();
+
+    ctx.arc(
+        player.x,
+        player.y,
+        player.radius,
+        0,
+        Math.PI * 2
+    );
+
+    ctx.fill();
+
+    ctx.strokeStyle = "#fff";
+    ctx.lineWidth = 2;
+
+    ctx.stroke();
+
+    /* ---------- フローティング ---------- */
+
+    floatingTexts.forEach(f => {
+
+        ctx.globalAlpha =
+            Math.min(
+                1,
+                f.life / 20
+            );
+
+        ctx.fillStyle = "#f6e05e";
+
+        ctx.font =
+            "bold 14px sans-serif";
+
+        ctx.textAlign = "center";
+
+        ctx.fillText(
+            f.text,
+            f.x,
+            f.y
+        );
+    });
+
+    ctx.globalAlpha = 1;
+
+    /* ---------- START ---------- */
+
+    if (gameState === "START") {
+
+        drawOverlay(
+            "✨ 星屑ジャンプ",
+            "タップ / クリックでスタート"
+        );
+    }
+
+    /* ---------- PAUSE ---------- */
+
+    if (gameState === "PAUSED") {
+
+        drawOverlay(
+            "PAUSED",
+            "⏸ 一時停止中"
+        );
+    }
+
+    /* ---------- GAME OVER ---------- */
+
+    if (gameState === "GAMEOVER") {
+
+        ctx.fillStyle =
+            "rgba(0,0,0,.72)";
+
+        ctx.fillRect(
+            0,
+            0,
+            canvas.width,
+            canvas.height
+        );
+
+        ctx.textAlign = "center";
+
+        ctx.fillStyle = "#fc8181";
+
+        ctx.font =
+            "bold 24px sans-serif";
+
+        ctx.fillText(
+            "GAME OVER",
+            canvas.width / 2,
+            105
+        );
+
+        ctx.fillStyle = "#fff";
+
+        ctx.font =
+            "bold 18px sans-serif";
+
+        ctx.fillText(
+            "SCORE  " + score,
+            canvas.width / 2,
+            140
+        );
+
+        ctx.font =
+            "14px sans-serif";
+
+        ctx.fillStyle = "#f6e05e";
+
+        ctx.fillText(
+            "BEST  " + highScore,
+            canvas.width / 2,
+            165
+        );
+
+        ctx.fillStyle = "#fff";
+
+        ctx.fillText(
+            "タップ / クリックでリトライ",
+            canvas.width / 2,
+            205
+        );
+    }
+}
+
+/* =========================================================
+   Overlay
+========================================================= */
+
+function drawOverlay(title, subtitle) {
+
+    ctx.fillStyle =
+        "rgba(0,0,0,.58)";
+
+    ctx.fillRect(
+        0,
+        0,
+        canvas.width,
+        canvas.height
+    );
+
+    ctx.textAlign = "center";
+
+    ctx.fillStyle = "#ffd700";
+
+    ctx.font =
+        "bold 22px sans-serif";
+
+    ctx.fillText(
+        title,
+        canvas.width / 2,
+        120
+    );
+
+    ctx.fillStyle = "#fff";
+
+    ctx.font =
+        "14px sans-serif";
+
+    ctx.fillText(
+        subtitle,
+        canvas.width / 2,
+        155
+    );
+}
+
+/* =========================================================
+   Star
+========================================================= */
+
+function drawStar(
+    cx,
+    cy,
+    spikes,
+    outerRadius,
+    innerRadius
+) {
+
+    let rotation =
+        Math.PI / 2 * 3;
+
+    const step =
+        Math.PI / spikes;
+
+    ctx.beginPath();
+
+    ctx.moveTo(
+        cx,
+        cy - outerRadius
+    );
+
+    for (
+        let i = 0;
+        i < spikes;
+        i++
+    ) {
+
+        let x =
+            cx +
+            Math.cos(rotation) *
+            outerRadius;
+
+        let y =
+            cy +
+            Math.sin(rotation) *
+            outerRadius;
+
+        ctx.lineTo(x, y);
+
+        rotation += step;
+
+        x =
+            cx +
+            Math.cos(rotation) *
+            innerRadius;
+
+        y =
+            cy +
+            Math.sin(rotation) *
+            innerRadius;
+
+        ctx.lineTo(x, y);
+
+        rotation += step;
+    }
+
+    ctx.closePath();
+
+    ctx.fillStyle = "#f6e05e";
+
+    ctx.fill();
+}
+
+/* =========================================================
+   Pause
+========================================================= */
+
+pauseBtn.addEventListener(
+    "click",
+    function() {
+
+        if (gameState === "PLAYING") {
+
+            gameState = "PAUSED";
+
+            pauseBtn.textContent =
+                "▶ 再開";
+
+        } else if (
+            gameState === "PAUSED"
+        ) {
+
+            gameState = "PLAYING";
+
+            pauseBtn.textContent =
+                "⏸ 一時停止";
+        }
+    }
+);
+
+/* =========================================================
+   Reset Data
+========================================================= */
+
+resetBtn.addEventListener(
+    "click",
+    function() {
+
+        const confirmed =
+            confirm(
+                "ハイスコアや実績などの保存データをすべて削除しますか？"
+            );
+
+        if (!confirmed) {
+            return;
+        }
+
+        localStorage.removeItem(
+            SAVE_KEY
+        );
+
+        savedData = {
+            highScore: 0,
+            bestCombo: 0,
+            totalStars: 0,
+            games: 0,
+            achievements: []
+        };
+
+        highScore = 0;
+        bestCombo = 0;
+
+        resetGame();
+
+        gameState = "START";
+
+        pauseBtn.textContent =
+            "⏸ 一時停止";
+
+        updateUI();
+    }
+);
+
+/* =========================================================
+   Main Loop
+========================================================= */
+
+function loop(timestamp) {
+
+    if (!lastTime) {
+        lastTime = timestamp;
+    }
+
+    const delta =
+        timestamp - lastTime;
+
+    lastTime = timestamp;
+
+    deltaFrames =
+        Math.min(
+            2,
+            Math.max(
+                .5,
+                delta / 16.67
+            )
+        );
+
+    update();
+
+    draw();
+
+    requestAnimationFrame(loop);
+}
+
+/* =========================================================
+   Start
+========================================================= */
+
+updateUI();
+
+requestAnimationFrame(loop);
+
+</script>
+
+</body>
+</html>
+
